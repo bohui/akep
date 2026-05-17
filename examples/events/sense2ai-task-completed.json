@@ -1,0 +1,43 @@
+{
+  "spec": "akep.v1",
+  "event_id": "evt_sense2ai_01HX5S8ZQ9J6W9E5W4H8A2K7D3",
+  "event_type": "knowledge.acquired",
+  "occurred_at": "2026-05-17T03:00:00Z",
+  "source": {
+    "name": "sense2ai",
+    "type": "marketplace",
+    "source_event_id": "submission_sub_456_completed"
+  },
+  "subject": {
+    "task_id": "task_123",
+    "thread_id": "thread_property_due_diligence_456",
+    "agent_id": "agent_local_abc"
+  },
+  "knowledge": {
+    "kind": "observation",
+    "content_type": "application/json",
+    "uri": "https://sense2.ai/artifacts/sub_456",
+    "summary": "Defaced inspection video and structured property observation summary are ready.",
+    "confidence": 0.82,
+    "expires_at": null,
+    "content": {
+      "defaced_video_url": "https://sense2.ai/artifacts/sub_456/defaced-video.mp4",
+      "json_summary": {
+        "overall_condition": "good",
+        "visible_risks": ["minor fence wear", "street noise low"],
+        "objects": ["front gate", "driveway", "street frontage"],
+        "privacy": "faces and plates defaced"
+      }
+    }
+  },
+  "routing": {
+    "resume_policy": "resume_if_waiting",
+    "priority": "normal",
+    "interrupt_id": "int_waiting_for_property_video"
+  },
+  "links": {
+    "self": "https://sense2.ai/api/akep/events/evt_sense2ai_01HX5S8ZQ9J6W9E5W4H8A2K7D3",
+    "ack": "https://sense2.ai/api/akep/events/evt_sense2ai_01HX5S8ZQ9J6W9E5W4H8A2K7D3/ack"
+  }
+}
+

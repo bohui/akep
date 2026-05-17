@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://akep.dev/schemas/akep-subscription-v1.schema.json",
+  "title": "AKEP Subscription v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["spec", "sink", "event_types", "delivery"],
+  "properties": {
+    "spec": {
+      "const": "akep.v1"
+    },
+    "sink": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "event_types": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_.-]*[a-z0-9]$"
+      }
+    },
+    "filters": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["string", "number", "boolean", "array", "null"]
+      }
+    },
+    "delivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["webhook", "relay", "sse", "websocket", "poll", "queue"]
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "queue": {
+          "type": "string"
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resume_policies": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["never", "append_only", "resume_if_waiting", "resume_immediately"]
+          },
+          "uniqueItems": true
+        },
+        "max_payload_bytes": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 10485760
+        }
+      }
+    }
+  }
+}
+

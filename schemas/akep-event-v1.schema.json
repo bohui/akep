@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://akep.dev/schemas/akep-event-v1.schema.json",
+  "title": "AKEP Event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "spec",
+    "event_id",
+    "event_type",
+    "occurred_at",
+    "source",
+    "subject",
+    "knowledge",
+    "routing"
+  ],
+  "properties": {
+    "spec": {
+      "const": "akep.v1"
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_:-]+$"
+    },
+    "event_type": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[a-z0-9][a-z0-9_.-]*[a-z0-9]$"
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "type": {
+          "type": "string",
+          "enum": ["marketplace", "tool", "agent", "human", "system", "webhook", "queue", "sensor", "other"]
+        },
+        "source_event_id": {
+          "type": "string",
+          "maxLength": 256
+        }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["string", "number", "boolean", "null"]
+      },
+      "properties": {
+        "task_id": { "type": "string" },
+        "thread_id": { "type": "string" },
+        "agent_id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "artifact_id": { "type": "string" }
+      }
+    },
+    "knowledge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "content_type", "summary"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["observation", "tool_result", "approval", "document", "artifact", "message", "memory"]
+        },
+        "content_type": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128
+        },
+        "uri": {
+          "type": ["string", "null"],
+          "format": "uri"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "confidence": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "expires_at": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "content": {
+          "type": ["object", "array", "string", "number", "boolean", "null"]
+        },
+        "hash": {
+          "type": "string",
+          "maxLength": 256
+        }
+      }
+    },
+    "routing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resume_policy"],
+      "properties": {
+        "resume_policy": {
+          "type": "string",
+          "enum": ["never", "append_only", "resume_if_waiting", "resume_immediately"]
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["low", "normal", "high", "urgent"],
+          "default": "normal"
+        },
+        "interrupt_id": {
+          "type": ["string", "null"],
+          "maxLength": 256
+        }
+      }
+    },
+    "links": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "format": "uri"
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}
+

@@ -1,0 +1,18 @@
+{
+  "spec": "akep.v1",
+  "sink": "agent.local.property-buyer",
+  "event_types": ["knowledge.acquired", "tool.failed", "human.review_required"],
+  "filters": {
+    "source.name": "sense2ai",
+    "knowledge.kind": ["observation", "tool_result", "approval"]
+  },
+  "delivery": {
+    "type": "webhook",
+    "url": "https://agent.example.com/akep/events"
+  },
+  "capabilities": {
+    "resume_policies": ["append_only", "resume_if_waiting"],
+    "max_payload_bytes": 1048576
+  }
+}
+

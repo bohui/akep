@@ -1,0 +1,13 @@
+{
+  "name": "akep-node-examples",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "receive": "node receiver.mjs",
+    "send": "node send-event.mjs"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
+

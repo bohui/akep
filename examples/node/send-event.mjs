@@ -21,6 +21,7 @@ const event = JSON.parse(fs.readFileSync(eventPath, "utf8"));
 const rawBody = Buffer.from(stableStringify(event));
 const eventId = event.event_id;
 const timestamp = String(Math.floor(Date.now() / 1000));
+const keyId = process.env.AKEP_WEBHOOK_KEY_ID;
 const signed = Buffer.concat([
   Buffer.from(eventId),
   Buffer.from("."),
@@ -37,9 +38,9 @@ const response = await fetch(url, {
     "webhook-id": eventId,
     "webhook-timestamp": timestamp,
     "webhook-signature": signature,
+    ...(keyId ? { "webhook-signature-key-id": keyId } : {}),
   },
   body: rawBody,
 });
 
 console.log(response.status, await response.text());
-

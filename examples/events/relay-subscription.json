@@ -4,11 +4,11 @@
   "event_types": ["knowledge.acquired", "tool.failed", "human.review_required"],
   "filters": {
     "source.name": "sense2ai",
-    "knowledge.kind": ["observation", "tool_result", "approval"]
+    "subject.agent_id": "agent_buyer_991"
   },
   "delivery": {
-    "type": "webhook",
-    "url": "https://agent.example.com/akep/events",
+    "type": "long_poll",
+    "url": "https://relay.akep.dev/akep/events/wait",
     "ack_required": true,
     "replay_retention_seconds": 604800
   },

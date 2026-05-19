@@ -1,0 +1,76 @@
+{
+  "asyncapi": "3.0.0",
+  "info": {
+    "title": "AKEP v1 Relay Events",
+    "version": "0.2.0",
+    "description": "AsyncAPI description for AKEP relay delivery over SSE, WebSocket, queue, or long-poll adapters."
+  },
+  "channels": {
+    "akepEvents": {
+      "address": "akep/events",
+      "messages": {
+        "akepEvent": {
+          "$ref": "#/components/messages/AkepEvent"
+        }
+      }
+    },
+    "akepAcks": {
+      "address": "akep/events/{event_id}/ack",
+      "parameters": {
+        "event_id": {
+          "description": "AKEP event id being acknowledged"
+        }
+      },
+      "messages": {
+        "akepAck": {
+          "$ref": "#/components/messages/AkepAck"
+        }
+      }
+    }
+  },
+  "operations": {
+    "receiveAkepEvents": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/akepEvents"
+      },
+      "summary": "Receive signed AKEP events from a relay or queue"
+    },
+    "sendAkepAcks": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/akepAcks"
+      },
+      "summary": "Acknowledge local persistence or application of AKEP events"
+    }
+  },
+  "components": {
+    "messages": {
+      "AkepEvent": {
+        "name": "AkepEvent",
+        "payload": {
+          "$ref": "../schemas/akep-event-v1.schema.json"
+        }
+      },
+      "AkepAck": {
+        "name": "AkepAck",
+        "payload": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": ["stored", "applied", "rejected"]
+            },
+            "reason": {
+              "type": "string"
+            },
+            "processed_at": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        }
+      }
+    }
+  }
+}

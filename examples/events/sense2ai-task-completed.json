@@ -4,8 +4,9 @@
   "event_type": "knowledge.acquired",
   "occurred_at": "2026-05-17T03:00:00Z",
   "source": {
+    "producer_id": "prod_sense2ai_01",
     "name": "sense2ai",
-    "type": "marketplace",
+    "type": "publisher",
     "source_event_id": "submission_sub_456_completed"
   },
   "subject": {
@@ -33,11 +34,15 @@
   "routing": {
     "resume_policy": "resume_if_waiting",
     "priority": "normal",
-    "interrupt_id": "int_waiting_for_property_video"
+    "interrupt_id": "int_waiting_for_property_video",
+    "causation_id": "evt_sense2ai_task_accepted_456",
+    "sequence": 7
+  },
+  "extensions": {
+    "ai.akep.workflow_id": "wf_buyer_991"
   },
   "links": {
     "self": "https://sense2.ai/api/akep/events/evt_sense2ai_01HX5S8ZQ9J6W9E5W4H8A2K7D3",
     "ack": "https://sense2.ai/api/akep/events/evt_sense2ai_01HX5S8ZQ9J6W9E5W4H8A2K7D3/ack"
   }
 }
-

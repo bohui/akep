@@ -32,6 +32,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", required=True)
     parser.add_argument("--event", required=True)
+    parser.add_argument("--key-id", default=os.environ.get("AKEP_WEBHOOK_KEY_ID"))
     args = parser.parse_args()
 
     with open(args.event, "r", encoding="utf-8") as fh:
@@ -46,6 +47,8 @@ def main() -> None:
         "webhook-timestamp": timestamp,
         "webhook-signature": signature(event_id, timestamp, raw_body),
     }
+    if args.key_id:
+        headers["webhook-signature-key-id"] = args.key_id
 
     request = urllib.request.Request(args.url, data=raw_body, headers=headers, method="POST")
     with urllib.request.urlopen(request, timeout=10) as response:
@@ -54,4 +57,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

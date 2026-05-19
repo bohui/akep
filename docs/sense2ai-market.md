@@ -1,6 +1,11 @@
 # Sense2AI First Use Case
 
-Sense2AI is the first intended AKEP producer: a marketplace where AI agents request real-world knowledge tasks and humans fulfill them.
+Sense2AI is the first intended AKEP producer: a knowledge publisher where AI agents request real-world knowledge tasks and humans fulfill them.
+
+Sense2AI should use AKEP for the asynchronous result boundary, not as a
+full agent-to-agent negotiation layer. The buyer agent can submit tasks
+through a normal Sense2AI REST API. Sense2AI then emits signed AKEP
+events when humans complete, fail, or review those tasks.
 
 ## Market Loop
 
@@ -50,6 +55,34 @@ POST /api/akep/events/{event_id}/ack
 
 Webhook push gives low latency. Replay and acknowledgement make offline agents reliable.
 
+For hosted buyer-agent platforms, the recommended production design is
+hybrid:
+
+```text
+Sense2AI webhook
+  -> buyer-platform AKEP ingress
+  -> internal event queue / durable inbox
+  -> workflow_id or task_id router
+  -> suspended buyer agent resumes
+```
+
+Do not expose one webhook per agent instance. Expose one tenant-aware
+platform endpoint and route by `subject.task_id`, `subject.thread_id`,
+`subject.agent_id`, and trusted metadata.
+
+For local agents, use the relay profile instead of requiring a public
+domain or laptop port.
+
+## Submission Boundary
+
+AKEP does not standardize task creation. Sense2AI can keep its normal
+REST API for creating real-world knowledge tasks.
+
+The AKEP requirement is that completion, failure, and review events echo
+stable correlation ids in `subject`, such as `task_id`, `thread_id`, and
+`agent_id`, so the receiver can route the resulting knowledge to the
+waiting agent state.
+
 ## First Developer Experience
 
 ```bash
@@ -75,4 +108,3 @@ For production, Sense2AI should not require users to expose a laptop port. A hos
 - deliver over SSE, WebSocket, or polling
 - support replay cursors
 - support explicit ack after local persistence
-

@@ -9,8 +9,9 @@
   "event_type": "knowledge.acquired",
   "occurred_at": "2026-05-17T03:00:00Z",
   "source": {
+    "producer_id": "prod_sense2ai_01",
     "name": "sense2ai",
-    "type": "marketplace",
+    "type": "publisher",
     "source_event_id": "submission_sub_456_completed"
   },
   "subject": {
@@ -29,7 +30,8 @@
   "routing": {
     "resume_policy": "resume_if_waiting",
     "priority": "normal",
-    "interrupt_id": "optional"
+    "interrupt_id": "optional",
+    "sequence": 42
   }
 }
 ```
@@ -42,6 +44,7 @@ Required headers:
 webhook-id: evt_...
 webhook-timestamp: 1778157296
 webhook-signature: v1,<base64-hmac-sha256>
+webhook-signature-key-id: 2026-05
 content-type: application/json
 ```
 
@@ -51,7 +54,9 @@ Signature message:
 webhook-id + "." + webhook-timestamp + "." + raw_body
 ```
 
-Verify against raw bytes before parsing JSON.
+Verify against raw bytes before parsing JSON. Receivers should accept
+any valid `v1` signature when multiple signatures are sent during key
+rotation.
 
 ## Receiver Rules
 
@@ -63,6 +68,7 @@ Reject when:
 - `webhook-id` does not match `event_id`
 - event id already exists in the inbox
 - subscription filters do not match
+- source name or producer id is not allowed by the subscription
 - payload is too large
 - event contains a direct command
 
@@ -76,3 +82,17 @@ Reject when:
 | `sense2ai.task.human_review_approved` | `human.approved` | `approval` |
 | `sense2ai.task.human_review_rejected` | `human.rejected` | `approval` |
 
+Use normal Sense2AI REST APIs for task creation. Use AKEP for completion,
+failure, review, and artifact result events.
+
+## Replay
+
+Replay-capable receivers expose:
+
+```http
+GET /akep/events?cursor=<opaque>&limit=100
+GET /akep/events/wait?cursor=<opaque>&timeout_seconds=60
+POST /akep/events/{event_id}/ack
+```
+
+Replay responses use `{ "events": [], "next_cursor": "...", "has_more": false }`.

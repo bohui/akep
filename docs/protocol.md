@@ -14,11 +14,16 @@ AKEP is designed for:
 
 - long-running tools
 - human approval and review
-- marketplace task fulfillment
+- knowledge publisher task fulfillment
 - sensor and real-world observations
 - background model and batch jobs
 - artifact, file, and memory changes
 - offline local agents that need replay
+
+AKEP is not a full agent-to-agent negotiation protocol. Use A2A-style
+protocols when two autonomous agents need capability discovery,
+conversation, and task negotiation. Use AKEP when an external system has
+asynchronous knowledge that should be delivered into an agent inbox.
 
 ## 2. Architecture
 
@@ -48,8 +53,9 @@ Every event is a JSON object with this shape:
   "event_type": "knowledge.acquired",
   "occurred_at": "2026-05-17T03:00:00Z",
   "source": {
+    "producer_id": "prod_sense2ai_01",
     "name": "sense2ai",
-    "type": "marketplace",
+    "type": "publisher",
     "source_event_id": "submission_sub_456_completed"
   },
   "subject": {
@@ -74,7 +80,9 @@ Every event is a JSON object with this shape:
   "routing": {
     "resume_policy": "resume_if_waiting",
     "priority": "normal",
-    "interrupt_id": "optional_interrupt_id"
+    "interrupt_id": "optional_interrupt_id",
+    "causation_id": "evt_previous_01",
+    "sequence": 42
   },
   "links": {
     "self": "https://sense2.ai/api/akep/events/evt_01HX5S8ZQ9J6W9E5W4H8A2K7D3",
@@ -92,9 +100,9 @@ Every event is a JSON object with this shape:
 | `event_type` | MUST be one of the core types or a reverse-DNS/vendor extension. |
 | `occurred_at` | MUST be the ISO 8601 time the knowledge event occurred. |
 | `source` | MUST identify the event producer. |
-| `subject` | SHOULD identify the task, thread, agent, user, or artifact the event concerns. |
+| `subject` | MUST identify at least one task, thread, agent, user, or artifact the event concerns. |
 | `knowledge` | MUST contain normalized knowledge or a pointer to it. |
-| `routing` | SHOULD contain resume advice. Receivers MAY ignore it. |
+| `routing` | MUST contain resume advice. Receivers MAY ignore it after persistence. |
 
 ## 4. Core Event Types
 
@@ -137,6 +145,10 @@ Large media SHOULD be sent as URLs, content-addressed identifiers, or resource r
 
 `routing.resume_policy` is advice, not authority. Local policy always wins.
 
+`routing.causation_id` SHOULD point to the event that caused this event
+when a producer can express causality. `routing.sequence` SHOULD be
+monotonic per subject when a producer can detect out-of-order delivery.
+
 ## 7. Delivery Transports
 
 AKEP defines the envelope and receiver semantics. Transports are adapters.
@@ -150,6 +162,10 @@ Recommended transports:
 
 Production desktop agents SHOULD prefer outbound relay connections instead of exposing a local port.
 
+Implementations SHOULD advertise supported transport and behavior
+profiles through `GET /.well-known/akep.json`. See
+[`discovery.md`](discovery.md) and [`profiles.md`](profiles.md).
+
 ## 8. Webhook Transport
 
 Webhook delivery MUST use Standard Webhooks-compatible metadata headers:
@@ -158,6 +174,7 @@ Webhook delivery MUST use Standard Webhooks-compatible metadata headers:
 webhook-id: evt_01HX5S8ZQ9J6W9E5W4H8A2K7D3
 webhook-timestamp: 1778157296
 webhook-signature: v1,<base64-hmac-sha256>
+webhook-signature-key-id: 2026-05
 content-type: application/json
 ```
 
@@ -168,6 +185,12 @@ HMAC_SHA256(secret, webhook-id + "." + webhook-timestamp + "." + raw_body)
 ```
 
 The receiver MUST verify against the exact raw body bytes that arrived on the wire. Parsing and reserializing JSON before verification will break signatures and can introduce security bugs.
+
+`webhook-id` and `webhook-timestamp` MUST NOT contain `.`. Producers MAY
+send multiple signatures in one `webhook-signature` header during key
+rotation. Receivers MUST accept the event if any signature validates
+against an active key for the producer and subscription. See
+[`signatures.md`](signatures.md).
 
 Receivers MUST reject when:
 
@@ -200,6 +223,28 @@ POST /akep/events/{event_id}/ack
 
 Webhook push is the low-latency path. Inbox replay is the reliability path.
 
+Replay cursors are opaque. Replay responses MUST use this shape:
+
+```json
+{
+  "events": [],
+  "next_cursor": "cur_42",
+  "has_more": false
+}
+```
+
+Implementations that advertise the replay profile MUST also support:
+
+```http
+GET /akep/events/wait?cursor=<cursor>&timeout_seconds=60
+GET /akep/tasks/{task_id}
+```
+
+The wait endpoint is long-polling over ordinary HTTP and returns either a
+replay page (`200 OK`) or `204 No Content` on timeout. See
+[`replay-and-ack.md`](replay-and-ack.md) for the normative replay,
+wait, ack, and task-state contract.
+
 ## 10. Subscriptions
 
 An agent SHOULD subscribe with declared capabilities rather than exposing an unfiltered endpoint.
@@ -215,7 +260,14 @@ An agent SHOULD subscribe with declared capabilities rather than exposing an unf
   },
   "delivery": {
     "type": "webhook",
-    "url": "https://example.com/akep/events"
+    "url": "https://example.com/akep/events",
+    "ack_required": true,
+    "replay_retention_seconds": 604800
+  },
+  "security": {
+    "accepted_source_names": ["sense2ai"],
+    "accepted_producer_ids": ["prod_sense2ai_01"],
+    "signature_key_ids": ["2026-05"]
   },
   "capabilities": {
     "resume_policies": ["append_only", "resume_if_waiting"],
@@ -226,6 +278,9 @@ An agent SHOULD subscribe with declared capabilities rather than exposing an unf
 
 Receivers SHOULD reject events that do not match a known subscription.
 
+Filter keys are dotted JSON paths. Scalar values mean equality, array
+values mean membership, and all filter keys are combined with AND.
+
 ## 11. Relationship to Other Protocols
 
 AKEP does not replace MCP, A2A, workflow engines, or model SDKs.
@@ -235,7 +290,20 @@ AKEP does not replace MCP, A2A, workflow engines, or model SDKs.
 - Use workflow engines for durable execution.
 - Use model SDKs for reasoning once local policy has accepted an event.
 
-## 12. Compatibility Requirements
+## 12. Adoption Profiles
+
+AKEP compatibility is profile-based:
+
+- Core Event Receiver: webhook ingestion, signature verification,
+  idempotency, inbox persistence, and safe resume policy handling.
+- Replay Inbox: cursor replay, ack, and long-poll wait.
+- Relay: outbound delivery for local/domainless agents.
+- Task State: HTTP task-state retrieval.
+- Knowledge Publisher Results: real-world or external knowledge result events.
+
+See [`profiles.md`](profiles.md).
+
+## 13. Compatibility Requirements
 
 An implementation is AKEP v1 compatible if it:
 
@@ -245,4 +313,3 @@ An implementation is AKEP v1 compatible if it:
 - separates event ingestion from model/tool execution
 - supports at least `append_only` and `resume_if_waiting`
 - documents its subscription and payload limits
-

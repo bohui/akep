@@ -71,6 +71,20 @@ Inspect the durable inbox:
 sqlite3 .akep/inbox.db "select event_id, event_type, source_name from events;"
 ```
 
+Replay the inbox over HTTP:
+
+```bash
+curl -sS 'http://127.0.0.1:8787/akep/events?limit=10'
+```
+
+Ack the event after local persistence or processing:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8787/akep/events/evt_sense2ai_01HX5S8ZQ9J6W9E5W4H8A2K7D3/ack \
+  -H 'content-type: application/json' \
+  --data '{"status":"stored","reason":"quickstart replay verified"}'
+```
+
 ---
 
 ## 3. Node receiver + Node sender
@@ -169,8 +183,8 @@ Register the public URL as your producer's webhook destination (for
 Sense2.ai: as the task webhook URL or AKEP subscription `delivery.url`).
 
 For **production**, prefer an outbound relay over exposing a local
-port. The hosted relay API is on the v0.3 roadmap; until then, run the
-receiver on a small VM or in your own cluster.
+port. Use cursor replay or HTTP long-poll when the local agent only has
+outbound access; see [`replay-and-ack.md`](replay-and-ack.md).
 
 ---
 

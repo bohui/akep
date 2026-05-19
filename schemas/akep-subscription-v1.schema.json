@@ -7,7 +7,8 @@
   "required": ["spec", "sink", "event_types", "delivery"],
   "properties": {
     "spec": {
-      "const": "akep.v1"
+      "type": "string",
+      "pattern": "^akep\\.v1(\\.[0-9]+)?$"
     },
     "sink": {
       "type": "string",
@@ -25,6 +26,9 @@
     },
     "filters": {
       "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)*$"
+      },
       "additionalProperties": {
         "type": ["string", "number", "boolean", "array", "null"]
       }
@@ -36,7 +40,7 @@
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["webhook", "relay", "sse", "websocket", "poll", "queue"]
+          "enum": ["webhook", "relay", "sse", "websocket", "poll", "long_poll", "queue"]
         },
         "url": {
           "type": "string",
@@ -44,6 +48,41 @@
         },
         "queue": {
           "type": "string"
+        },
+        "ack_required": {
+          "type": "boolean",
+          "default": true
+        },
+        "replay_retention_seconds": {
+          "type": "integer",
+          "minimum": 86400,
+          "maximum": 2592000
+        }
+      }
+    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "accepted_source_names": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "uniqueItems": true
+        },
+        "accepted_producer_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_:-]+$"
+          },
+          "uniqueItems": true
+        },
+        "signature_key_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "uniqueItems": true
         }
       }
     },
@@ -68,4 +107,3 @@
     }
   }
 }
-

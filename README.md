@@ -45,7 +45,7 @@ this wall:
   **How do you wake the agent back up?**
 - You send a task to a human reviewer. They approve it tomorrow morning.
   **How does the paused agent run resume?**
-- A marketplace, sensor, or background job produces structured knowledge.
+- A knowledge publisher, sensor, or background job produces structured knowledge.
   **How does that knowledge reach the right agent, signed and deduplicated?**
 - Your laptop closed its tunnel. The agent missed three events.
   **How do you replay them safely?**
@@ -79,9 +79,9 @@ Use AKEP when any of the following is true.
 
 - You need to **notify an AI agent that a long-running tool finished**.
 - You need to **resume a paused agent after a human approval** (HITL).
-- You're building **agent-to-agent (A2A) events** and want a tiny, safe
-  envelope rather than reinventing webhooks.
-- You're shipping a **marketplace, observability stream, or sensor feed**
+- You're integrating **agent-to-agent (A2A) systems** and need a tiny,
+  safe inbound event/inbox envelope next to the fuller task protocol.
+- You're shipping a **knowledge publisher, observability stream, or sensor feed**
   that AI agents should consume.
 - You need **replay, idempotency, and signature verification** for events
   going *to* an agent, not from one.
@@ -158,7 +158,8 @@ AKEP.
 ## How AKEP compares to webhooks, MCP, A2A, and CloudEvents
 
 AKEP is intentionally small and slots **next to** the protocols you
-probably already use — not on top of them.
+probably already use. It is not a replacement for A2A negotiation,
+workflow engines, or MCP.
 
 | Concern                                     | Plain webhooks | MCP           | Agent-to-Agent (A2A) | CloudEvents | **AKEP**            |
 | ------------------------------------------- | -------------- | ------------- | -------------------- | ----------- | ------------------- |
@@ -168,6 +169,7 @@ probably already use — not on top of them.
 | Replay / inbox cursor                       | DIY            | n/a           | DIY                  | DIY         | **specified**       |
 | "Events carry knowledge, never commands"    | no             | n/a           | no                   | no          | **yes**             |
 | Resume policy for paused agents             | n/a            | n/a           | DIY                  | n/a         | **first-class**     |
+| Durable inbox / relay profile               | DIY            | n/a           | implementation-specific | DIY      | **specified**       |
 | Works for local desktop agents              | hard           | yes           | varies               | yes         | **yes (outbound relay)** |
 | Model-neutral                               | yes            | yes           | partially            | yes         | **yes**             |
 | Maps to CloudEvents                         | yes            | n/a           | varies               | —           | **yes (documented)**|
@@ -176,6 +178,11 @@ probably already use — not on top of them.
 *pushes* knowledge into agents. CloudEvents is a generic envelope —
 AKEP is a CloudEvents-compatible envelope plus the agent-specific bits
 (resume policy, subject routing, durable inbox, safety boundary).
+
+For Sense2.ai and similar knowledge publishers, the recommended split is simple:
+use a normal REST API to create human tasks, then use AKEP events to
+deliver completion, failure, review, and message results back into the
+waiting agent.
 
 ---
 
@@ -190,7 +197,7 @@ A complete AKEP event is one signed JSON object. Full schema:
   "event_id": "evt_01HX5S8ZQ9J6W9E5W4H8A2K7D3",
   "event_type": "knowledge.acquired",
   "occurred_at": "2026-05-17T03:00:00Z",
-  "source":  { "name": "sense2ai", "type": "marketplace" },
+  "source":  { "producer_id": "prod_sense2ai_01", "name": "sense2ai", "type": "publisher" },
   "subject": { "task_id": "task_123", "thread_id": "thread_456" },
   "knowledge": {
     "kind": "observation",
@@ -203,7 +210,8 @@ A complete AKEP event is one signed JSON object. Full schema:
   "routing": {
     "resume_policy": "resume_if_waiting",
     "priority": "normal",
-    "interrupt_id": "int_waiting_for_property_video"
+    "interrupt_id": "int_waiting_for_property_video",
+    "sequence": 42
   }
 }
 ```
@@ -235,24 +243,28 @@ agent's LangGraph thread resumes from the paused interrupt.
 ### Real-world context via Sense2.ai
 
 [Sense2.ai](https://sense2.ai) is the first AKEP producer in
-production: an AI sensory marketplace where agents request real-world
+production: an AI sensory knowledge publisher where agents request real-world
 context (video, audio, photos) and humans fulfill the request. When the
 human's submission is processed and defaced, Sense2.ai emits a signed
 AKEP `knowledge.acquired` event, and the agent gets structured
 observation data plus a privacy-safe artifact URL. See
 [`docs/sense2ai-market.md`](docs/sense2ai-market.md).
 
-### Marketplace, sensor, queue, file watcher
+### Knowledge publisher, sensor, queue, file watcher
 
 Any producer that can sign a Standard Webhooks-compatible request can
 emit AKEP. Map your domain event to `event_type` and `knowledge.kind`;
 ship.
 
-### Agent-to-agent (A2A) handoff
+### Agent-to-agent (A2A) event handoff
 
 Agent A finishes a research phase, signs a `knowledge.acquired` event,
 posts it to Agent B's AKEP inbox. Agent B verifies, stores, and decides
 locally whether to resume. No shared runtime, no shared vendor.
+
+Use a full A2A protocol when the agents need capability discovery,
+multi-turn negotiation, or remote task execution. Use AKEP when the
+handoff is an asynchronous knowledge event.
 
 ---
 
@@ -355,8 +367,10 @@ graph resumes at the right node.
 
 Yes, two ways. Either expose the local receiver via a tunnel
 (Cloudflare Tunnel, Hookdeck, ngrok, Tailscale Funnel) for development,
-or use an outbound relay (SSE, WebSocket, polling) in production.
-Specifying the relay API is on the v0.3 roadmap.
+or use an outbound relay (SSE, WebSocket, polling, or HTTP long-poll) in
+production. The relay and replay profiles are specified in
+[`docs/profiles.md`](docs/profiles.md) and
+[`docs/replay-and-ack.md`](docs/replay-and-ack.md).
 
 ### What's the safety story?
 
@@ -377,7 +391,7 @@ a conformance test suite.
 
 ### What's the relationship to Sense2.ai?
 
-[Sense2.ai](https://sense2.ai) is an AI sensory marketplace and the
+[Sense2.ai](https://sense2.ai) is an AI sensory knowledge publisher and the
 first production AKEP producer. It uses AKEP to deliver
 defaced video and structured observation data back to agents that
 posted tasks. See
@@ -397,12 +411,19 @@ gaps.
 | Path                                                                                             | What it is                                              |
 | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
 | [`docs/protocol.md`](docs/protocol.md)                                                           | Normative AKEP v1 draft                                 |
+| [`docs/profiles.md`](docs/profiles.md)                                                           | Core, replay, relay, task, and Sense2.ai profiles        |
+| [`docs/replay-and-ack.md`](docs/replay-and-ack.md)                                               | Cursor replay, wait, ack, and task-state contract       |
+| [`docs/signatures.md`](docs/signatures.md)                                                       | Signature algorithm and key rotation rules              |
+| [`docs/discovery.md`](docs/discovery.md)                                                         | `.well-known/akep.json` discovery                       |
 | [`docs/adoption-strategy.md`](docs/adoption-strategy.md)                                         | How AKEP gets adopted by agent runtimes                 |
 | [`docs/model-integrations.md`](docs/model-integrations.md)                                       | Claude, OpenAI, Gemini, MCP, LangGraph mappings         |
 | [`docs/sense2ai-market.md`](docs/sense2ai-market.md)                                             | Sense2AI as the first AKEP market                       |
 | [`docs/skill-installation.md`](docs/skill-installation.md)                                       | Install the AKEP skill in Claude Code / OpenClaw        |
 | [`schemas/akep-event-v1.schema.json`](schemas/akep-event-v1.schema.json)                         | Event envelope JSON Schema (Draft 2020-12)              |
 | [`schemas/akep-subscription-v1.schema.json`](schemas/akep-subscription-v1.schema.json)           | Subscription JSON Schema                                |
+| [`openapi/akep.v1.openapi.json`](openapi/akep.v1.openapi.json)                                   | HTTP API surface for ingestion, replay, ack, wait       |
+| [`asyncapi/akep.v1.asyncapi.json`](asyncapi/akep.v1.asyncapi.json)                               | Relay/stream event and ack surface                      |
+| [`.well-known/akep.json`](.well-known/akep.json)                                                 | Example discovery document                              |
 | [`examples/python/`](examples/python)                                                            | Zero-dep Python receiver + signer                       |
 | [`examples/node/`](examples/node)                                                                | Express receiver + sender                               |
 | [`examples/events/`](examples/events)                                                            | Example event + subscription                            |
@@ -419,9 +440,9 @@ See [`ROADMAP.md`](ROADMAP.md). Highlights:
   installable skill, Sense2.ai first producer.
 - **v0.2 — Interop:** conformance tests; Go / typed-TS packages; MCP
   resource/tool adapter; OpenAI Agents SDK, Google ADK, LangGraph
-  adapters.
-- **v0.3 — Relay:** hosted-relay API, SSE/WebSocket/polling delivery,
-  cursor-based replay and ack semantics.
+  adapters; OpenAPI surface.
+- **v0.3 — Relay:** hosted-relay implementations and adapters for
+  SSE/WebSocket/polling/long-poll delivery.
 - **v1.0:** envelope freeze, conformance suite, neutral governance.
 
 ---

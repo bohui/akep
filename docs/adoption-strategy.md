@@ -10,9 +10,10 @@ The shortest path to broad adoption is:
 
 1. Align the wire format with existing standards.
 2. Keep the core envelope tiny.
-3. Ship installable skills and examples for the tools developers already use.
-4. Prove real demand through Sense2AI as the first async knowledge market.
-5. Invite other producers to add adapters without changing their model stack.
+3. Specify replay, ack, relay, discovery, and task profiles.
+4. Ship installable skills and examples for the tools developers already use.
+5. Prove real demand through Sense2AI as the first async knowledge market.
+6. Invite other producers to add adapters without changing their model stack.
 
 ## Why This Can Win
 
@@ -23,9 +24,23 @@ AKEP solves a visible gap:
 - Agent frameworks manage runs, state, and tools.
 - But there is no small shared convention for "verified external knowledge arrived; store it; maybe resume a paused agent."
 
-AKEP fills only that gap.
+AKEP fills only that gap. Do not market it as a replacement for A2A.
+A2A should remain the choice for agent-to-agent capability discovery and
+task negotiation; AKEP should be the choice for inbound async knowledge
+events and durable replay.
 
 ## Make It Easy for Every Runtime
+
+Publish conformance in small profiles:
+
+- Core Event Receiver
+- Replay Inbox
+- Relay
+- Task State
+- Knowledge Publisher Results
+
+This lets a local skill install support the core profile without needing
+to implement a full hosted relay on day one.
 
 ### Claude Code and Claude-style agents
 
@@ -82,6 +97,8 @@ Start pragmatic:
 | --- | --- |
 | Draft repo | Protocol, schemas, examples, skill published. |
 | Sense2AI adapter | First real producer emits AKEP events. |
+| Replay profile | Cursor replay, long-poll wait, and ack are implemented by examples. |
+| Discovery | `.well-known/akep.json` and OpenAPI are published. |
 | Two receiver SDKs | Python and Node receivers pass conformance tests. |
 | Agent skill distribution | Claude/OpenClaw/Codex-style agents can install the skill. |
 | MCP bridge | AKEP inbox can be surfaced as MCP resources/tools. |
@@ -119,4 +136,3 @@ This is a stronger story than a toy webhook demo because it proves the core thes
 - Do not require cloud relay for local development.
 - Do not let event producers command agents.
 - Do not compete with MCP for tool execution.
-

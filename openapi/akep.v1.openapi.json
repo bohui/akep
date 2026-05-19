@@ -1,0 +1,121 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AKEP v1 HTTP API",
+    "version": "0.2.0",
+    "description": "Reference HTTP surface for AKEP event ingestion, inbox replay, acknowledgement, waiting, and task-state lookup."
+  },
+  "paths": {
+    "/.well-known/akep.json": {
+      "get": {
+        "summary": "Discover AKEP service capabilities",
+        "responses": {
+          "200": {
+            "description": "AKEP discovery document"
+          }
+        }
+      }
+    },
+    "/akep/events": {
+      "post": {
+        "summary": "Ingest a signed AKEP event",
+        "parameters": [
+          { "name": "webhook-id", "in": "header", "required": true, "schema": { "type": "string" } },
+          { "name": "webhook-timestamp", "in": "header", "required": true, "schema": { "type": "string" } },
+          { "name": "webhook-signature", "in": "header", "required": true, "schema": { "type": "string" } },
+          { "name": "webhook-signature-key-id", "in": "header", "required": false, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "../schemas/akep-event-v1.schema.json" }
+            }
+          }
+        },
+        "responses": {
+          "202": { "description": "Event accepted after verification and durable persistence" },
+          "400": { "description": "Invalid signature or envelope" },
+          "413": { "description": "Payload too large" }
+        }
+      },
+      "get": {
+        "summary": "Replay inbox events from an opaque cursor",
+        "parameters": [
+          { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 1000 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Replay page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["events", "next_cursor", "has_more"],
+                  "properties": {
+                    "events": { "type": "array", "items": { "$ref": "../schemas/akep-event-v1.schema.json" } },
+                    "next_cursor": { "type": "string" },
+                    "has_more": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/akep/events/wait": {
+      "get": {
+        "summary": "Long-poll for the next replay event",
+        "parameters": [
+          { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "timeout_seconds", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 60 } }
+        ],
+        "responses": {
+          "200": { "description": "At least one event is available" },
+          "204": { "description": "No event became available before timeout" }
+        }
+      }
+    },
+    "/akep/events/{event_id}/ack": {
+      "post": {
+        "summary": "Acknowledge local persistence or application of an event",
+        "parameters": [
+          { "name": "event_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": { "type": "string", "enum": ["stored", "applied", "rejected"] },
+                  "reason": { "type": "string" },
+                  "processed_at": { "type": "string", "format": "date-time" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Ack stored idempotently" },
+          "404": { "description": "Unknown event" }
+        }
+      }
+    },
+    "/akep/tasks/{task_id}": {
+      "get": {
+        "summary": "Retrieve task state as reconstructed from inbox events",
+        "parameters": [
+          { "name": "task_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Task state" },
+          "404": { "description": "Unknown task" }
+        }
+      }
+    }
+  }
+}

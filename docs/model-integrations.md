@@ -46,6 +46,25 @@ Install the AKEP skill under:
 
 OpenClaw-compatible metadata should stay simple because OpenClaw skill parsing expects single-line frontmatter keys.
 
+OpenClaw can consume AKEP through the relay profile when it already has
+an outbound messaging or polling loop. The skill should parse only events
+from trusted producer ids and map them to local waiting tasks.
+
+## Codex-Style and Cron-Driven Agents
+
+Local agents that cannot expose a public webhook should use:
+
+```text
+cron / scheduled wakeup
+  -> GET /akep/events?cursor=<last_cursor>
+  -> persist each event locally
+  -> POST /akep/events/{event_id}/ack
+  -> resume only matching waiting tasks
+```
+
+For lower latency without inbound networking, replace cron polling with
+`GET /akep/events/wait?cursor=<last_cursor>&timeout_seconds=60`.
+
 ## OpenAI Agents SDK
 
 Recommended adapter shape:

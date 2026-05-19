@@ -1,0 +1,22 @@
+{
+  "spec": "akep.v1",
+  "event_id": "evt_conformance_12345678",
+  "event_type": "knowledge.acquired",
+  "occurred_at": "2026-05-19T06:30:00Z",
+  "source": {
+    "producer_id": "prod_conformance_test",
+    "name": "test-runner",
+    "type": "system"
+  },
+  "subject": {
+    "task_id": "task_conformance_01"
+  },
+  "knowledge": {
+    "kind": "observation",
+    "content_type": "application/json",
+    "summary": "Conformance test run successful."
+  },
+  "routing": {
+    "resume_policy": "append_only"
+  }
+}

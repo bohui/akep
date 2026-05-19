@@ -16,7 +16,8 @@
   ],
   "properties": {
     "spec": {
-      "const": "akep.v1"
+      "type": "string",
+      "pattern": "^akep\\.v1(\\.[0-9]+)?$"
     },
     "event_id": {
       "type": "string",
@@ -39,6 +40,12 @@
       "additionalProperties": false,
       "required": ["name", "type"],
       "properties": {
+        "producer_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_:-]+$"
+        },
         "name": {
           "type": "string",
           "minLength": 1,
@@ -46,7 +53,7 @@
         },
         "type": {
           "type": "string",
-          "enum": ["marketplace", "tool", "agent", "human", "system", "webhook", "queue", "sensor", "other"]
+          "enum": ["publisher", "tool", "agent", "human", "system", "webhook", "queue", "sensor", "other"]
         },
         "source_event_id": {
           "type": "string",
@@ -56,6 +63,7 @@
     },
     "subject": {
       "type": "object",
+      "minProperties": 1,
       "additionalProperties": {
         "type": ["string", "number", "boolean", "null"]
       },
@@ -65,7 +73,14 @@
         "agent_id": { "type": "string" },
         "user_id": { "type": "string" },
         "artifact_id": { "type": "string" }
-      }
+      },
+      "anyOf": [
+        { "required": ["task_id"] },
+        { "required": ["thread_id"] },
+        { "required": ["agent_id"] },
+        { "required": ["user_id"] },
+        { "required": ["artifact_id"] }
+      ]
     },
     "knowledge": {
       "type": "object",
@@ -104,7 +119,8 @@
         },
         "hash": {
           "type": "string",
-          "maxLength": 256
+          "maxLength": 256,
+          "pattern": "^[a-z0-9][a-z0-9_-]*:[A-Za-z0-9+/=_-]+$"
         }
       }
     },
@@ -125,6 +141,15 @@
         "interrupt_id": {
           "type": ["string", "null"],
           "maxLength": 256
+        },
+        "causation_id": {
+          "type": ["string", "null"],
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_:-]+$"
+        },
+        "sequence": {
+          "type": ["integer", "null"],
+          "minimum": 0
         }
       }
     },
@@ -137,8 +162,10 @@
     },
     "extensions": {
       "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9_.-]*[a-z0-9]$"
+      },
       "additionalProperties": true
     }
   }
 }
-

@@ -1,0 +1,20 @@
+{
+  "spec": "akep.v1",
+  "event_id": "evt_invalid_empty_subject",
+  "event_type": "knowledge.acquired",
+  "occurred_at": "2026-05-19T06:30:00Z",
+  "source": {
+    "producer_id": "prod_conformance_test",
+    "name": "test-runner",
+    "type": "system"
+  },
+  "subject": {},
+  "knowledge": {
+    "kind": "observation",
+    "content_type": "application/json",
+    "summary": "This should fail because subject is empty."
+  },
+  "routing": {
+    "resume_policy": "append_only"
+  }
+}

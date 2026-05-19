@@ -61,6 +61,11 @@ events into any agent inbox, signed and replayable. Two agents can
 absolutely use AKEP as their event bus — but AKEP does not try to
 standardize agent capabilities, identities, or negotiation.
 
+Use A2A when autonomous agents need discovery, task negotiation,
+streaming task execution, or multi-turn peer communication. Use AKEP
+when an external system such as Sense2.ai, a sensor, a queue, or a human
+review tool needs to tell an agent that new knowledge arrived.
+
 ### What models does AKEP work with?
 
 All of them. AKEP lives at the **agent runtime boundary**, not inside
@@ -97,9 +102,9 @@ Yes, two ways:
 - **Development:** expose the local receiver via Cloudflare Tunnel,
   Hookdeck, ngrok, or Tailscale Funnel. See
   [`docs/quickstart.md`](quickstart.md).
-- **Production:** use an outbound relay (SSE, WebSocket, or polling)
-  so the desktop agent connects out, not in. The hosted relay API is on
-  the v0.3 roadmap.
+- **Production:** use an outbound relay (SSE, WebSocket, polling, or
+  HTTP long-poll) so the desktop agent connects out, not in. See
+  [`profiles.md`](profiles.md) and [`replay-and-ack.md`](replay-and-ack.md).
 
 ### What's the safety model?
 
@@ -127,7 +132,7 @@ agility (`v1a` for Ed25519, etc.) is on the roadmap.
   "event_id": "evt_…",
   "event_type": "knowledge.acquired",
   "occurred_at": "2026-05-18T03:00:00Z",
-  "source":    { "name": "sense2ai", "type": "marketplace" },
+  "source":    { "name": "sense2ai", "type": "publisher" },
   "subject":   { "task_id": "task_123" },
   "knowledge": { "kind": "observation", "content_type": "application/json",
                  "summary": "…", "uri": "…", "content": { … } },
@@ -166,13 +171,14 @@ this with a SQLite primary key.
 
 ### What happens if my agent was offline for hours?
 
-Producers SHOULD expose two endpoints:
+Producers SHOULD expose replay and ack endpoints:
 
 - `GET /akep/events?cursor=<cursor>` — replay since the last cursor.
 - `POST /akep/events/{event_id}/ack` — acknowledge after local persistence.
 
-The agent reconnects, walks the replay cursor, acks each event, and is
-caught up. The exact cursor/ack contract is being firmed up in v0.2.
+The agent reconnects, walks the opaque replay cursor, acks each event,
+and is caught up. Agents that want to wait without inbound webhooks can
+also call `GET /akep/events/wait?cursor=<cursor>&timeout_seconds=60`.
 
 ### How do I subscribe with filters?
 
@@ -205,10 +211,19 @@ mappings in [`docs/model-integrations.md`](model-integrations.md).
 ### Who uses AKEP today?
 
 [Sense2.ai](https://sense2.ai) is the first production AKEP producer.
-It's an AI sensory marketplace where agents request real-world context
+It's an AI sensory knowledge publisher where agents request real-world context
 (video, audio, photos) and humans fulfill the request; results come
 back as signed AKEP `knowledge.acquired` events. See
 [`docs/sense2ai-market.md`](sense2ai-market.md).
+
+### Should Sense2.ai use A2A or AKEP?
+
+Sense2.ai should use normal REST for task creation and AKEP for async
+task results. Full A2A is useful only if Sense2.ai exposes autonomous
+agents that negotiate with buyer agents. For the knowledge-publisher use case,
+Sense2.ai is a producer of human-fulfilled observations, so AKEP is the
+cleaner boundary.
+
 
 ### Is AKEP a finalized standard?
 

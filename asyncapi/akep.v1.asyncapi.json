@@ -49,7 +49,7 @@
       "AkepEvent": {
         "name": "AkepEvent",
         "payload": {
-          "$ref": "../schemas/akep-event-v1.schema.json"
+          "$ref": "https://akep.dev/schemas/akep-event-v1.schema.json"
         }
       },
       "AkepAck": {

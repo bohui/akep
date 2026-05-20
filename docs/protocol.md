@@ -99,7 +99,7 @@ Every event is a JSON object with this shape:
 | `event_id` | MUST be globally unique and stable across retries. |
 | `event_type` | MUST be one of the core types or a reverse-DNS/vendor extension. |
 | `occurred_at` | MUST be the ISO 8601 time the knowledge event occurred. |
-| `source` | MUST identify the event producer. |
+| `source` | MUST identify the event producer. `source.producer_id`, `source.name`, and `source.type` are required. |
 | `subject` | MUST identify at least one task, thread, agent, user, or artifact the event concerns. |
 | `knowledge` | MUST contain normalized knowledge or a pointer to it. |
 | `routing` | MUST contain resume advice. Receivers MAY ignore it after persistence. |

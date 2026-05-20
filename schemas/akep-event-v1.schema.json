@@ -38,7 +38,7 @@
     "source": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "type"],
+      "required": ["producer_id", "name", "type"],
       "properties": {
         "producer_id": {
           "type": "string",

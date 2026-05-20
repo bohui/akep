@@ -26,6 +26,10 @@ DISCOVERY_PATH = "/.well-known/akep.json"
 MAX_BYTES = int(os.environ.get("AKEP_MAX_BYTES", "1048576"))
 TOLERANCE_SECONDS = int(os.environ.get("AKEP_TIMESTAMP_TOLERANCE", "300"))
 DB_PATH = Path(os.environ.get("AKEP_INBOX_DB", ".akep/inbox.db"))
+# When set, replay/wait/tasks/ack endpoints require
+# `Authorization: Bearer <AKEP_REPLAY_BEARER>`.
+# Leave unset for the local demo; set in any production deployment.
+REPLAY_BEARER = os.environ.get("AKEP_REPLAY_BEARER", "")
 
 
 def secret_bytes() -> bytes:
@@ -83,11 +87,16 @@ def matches_subscription(event: dict, subscription: dict, headers) -> tuple[bool
     if accepted_producers is not None and producer_id not in accepted_producers:
         return False, f"source.producer_id '{producer_id}' not in accepted_producer_ids"
 
-    # 3. signature_key_ids
+    # 3. signature_key_ids — fail closed: when the subscription declares
+    # accepted key ids, the request MUST include webhook-signature-key-id
+    # AND it MUST be in the list. A missing header is a rejection.
     key_id = headers.get("webhook-signature-key-id")
     accepted_key_ids = security.get("signature_key_ids")
-    if accepted_key_ids is not None and key_id and key_id not in accepted_key_ids:
-        return False, f"webhook-signature-key-id '{key_id}' not in signature_key_ids"
+    if accepted_key_ids is not None:
+        if not key_id:
+            return False, "webhook-signature-key-id header is required by subscription"
+        if key_id not in accepted_key_ids:
+            return False, f"webhook-signature-key-id '{key_id}' not in signature_key_ids"
 
     return True, ""
 
@@ -172,6 +181,8 @@ def store_event(event: dict, raw_body: bytes) -> bool:
 
 
 def parse_cursor(cursor: str) -> int:
+    """Permissive cursor parser used by replay() — only called after the
+    strict validator has approved the cursor at the HTTP boundary."""
     if not cursor:
         return 0
     if cursor.startswith("cur_"):
@@ -180,6 +191,21 @@ def parse_cursor(cursor: str) -> int:
         return max(0, int(cursor))
     except ValueError:
         return 0
+
+
+def parse_cursor_or_none(cursor: str) -> Optional[int]:
+    """Strict cursor validator. Returns None for malformed cursors so the
+    HTTP layer can return 400 instead of silently restarting at 0."""
+    if not cursor:
+        return 0
+    body = cursor.removeprefix("cur_") if cursor.startswith("cur_") else cursor
+    try:
+        value = int(body)
+    except ValueError:
+        return None
+    if value < 0:
+        return None
+    return value
 
 
 def replay_events(cursor: str, limit: int) -> dict:
@@ -262,6 +288,30 @@ def task_state(task_id: str) -> Optional[dict]:
 class AKEPHandler(BaseHTTPRequestHandler):
     server_version = "AKEPReceiver/0.1"
 
+    def _require_bearer(self) -> bool:
+        """Return True if the request is authorized to call replay/wait/tasks/ack.
+
+        When AKEP_REPLAY_BEARER is unset, all callers are allowed (demo mode).
+        When it is set, the caller MUST send `Authorization: Bearer <token>`
+        with a matching token. Sends a 401/403 response and returns False if
+        unauthorized.
+        """
+        if not REPLAY_BEARER:
+            return True
+        auth = self.headers.get("authorization", "")
+        if not auth.lower().startswith("bearer "):
+            self.send_response(401)
+            self.send_header("www-authenticate", 'Bearer realm="akep"')
+            self.send_header("content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"error":"bearer token required"}')
+            return False
+        provided = auth.split(" ", 1)[1].strip()
+        if not hmac.compare_digest(provided, REPLAY_BEARER):
+            self.respond(403, {"error": "invalid bearer token"})
+            return False
+        return True
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == DISCOVERY_PATH:
@@ -279,23 +329,45 @@ class AKEPHandler(BaseHTTPRequestHandler):
                     },
                     "delivery_profiles": ["webhook", "replay_inbox", "task_state"],
                     "signature_algorithms": ["v1"],
+                    "auth_schemes": ["bearer"] if REPLAY_BEARER else ["none"],
                     "retention": {"minimum_unacked_seconds": 604800},
                 },
             )
             return
 
+        # Everything below is a read against the inbox or task state and
+        # MUST be authenticated when AKEP_REPLAY_BEARER is set.
+        if not self._require_bearer():
+            return
+
         query = parse_qs(parsed.query)
         if parsed.path == PATH:
-            limit = int(query.get("limit", ["100"])[0])
-            self.respond(200, replay_events(query.get("cursor", [""])[0], limit))
+            raw_cursor = query.get("cursor", [""])[0]
+            cursor_value = parse_cursor_or_none(raw_cursor)
+            if raw_cursor and cursor_value is None:
+                self.respond(400, {"error": "invalid cursor"})
+                return
+            try:
+                limit = int(query.get("limit", ["100"])[0])
+            except ValueError:
+                self.respond(400, {"error": "invalid limit"})
+                return
+            self.respond(200, replay_events(raw_cursor, limit))
             return
 
         if parsed.path == f"{PATH}/wait":
-            timeout = max(1, min(int(query.get("timeout_seconds", ["30"])[0]), 60))
-            cursor = query.get("cursor", [""])[0]
+            try:
+                timeout = max(1, min(int(query.get("timeout_seconds", ["30"])[0]), 60))
+            except ValueError:
+                self.respond(400, {"error": "invalid timeout_seconds"})
+                return
+            raw_cursor = query.get("cursor", [""])[0]
+            if raw_cursor and parse_cursor_or_none(raw_cursor) is None:
+                self.respond(400, {"error": "invalid cursor"})
+                return
             deadline = time.time() + timeout
             while time.time() < deadline:
-                page = replay_events(cursor, 100)
+                page = replay_events(raw_cursor, 100)
                 if page["events"]:
                     self.respond(200, page)
                     return
@@ -319,6 +391,8 @@ class AKEPHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path.startswith(f"{PATH}/") and parsed.path.endswith("/ack"):
+            if not self._require_bearer():
+                return
             event_id = parsed.path.removeprefix(f"{PATH}/").removesuffix("/ack")
             content_length = int(self.headers.get("content-length", "0"))
             raw_body = self.rfile.read(content_length) if content_length > 0 else b"{}"
@@ -368,18 +442,23 @@ class AKEPHandler(BaseHTTPRequestHandler):
             self.respond(400, {"error": "AKEP events carry knowledge, not commands"})
             return
 
-        # Load and verify subscription filters
+        # Load and verify subscription filters. Fail CLOSED: if the
+        # subscription file is configured but unreadable or malformed,
+        # reject the event rather than accept it. Otherwise a misconfigured
+        # deployment silently strips its own enforcement.
         sub_path = os.environ.get("AKEP_SUBSCRIPTION_PATH", "examples/events/subscription.json")
         if os.path.exists(sub_path):
             try:
                 with open(sub_path, "r", encoding="utf-8") as fh:
                     subscription = json.load(fh)
-                ok_sub, reason_sub = matches_subscription(event, subscription, self.headers)
-                if not ok_sub:
-                    self.respond(422, {"error": f"subscription mismatch: {reason_sub}"})
-                    return
-            except Exception as e:
-                print(f"Error checking subscription filters: {e}")
+            except (OSError, json.JSONDecodeError) as e:
+                print(f"Subscription file unreadable, failing closed: {e}")
+                self.respond(503, {"error": "subscription configuration unavailable"})
+                return
+            ok_sub, reason_sub = matches_subscription(event, subscription, self.headers)
+            if not ok_sub:
+                self.respond(422, {"error": f"subscription mismatch: {reason_sub}"})
+                return
 
         inserted = store_event(event, raw_body)
         self.respond(202, {"accepted": True, "duplicate": not inserted})

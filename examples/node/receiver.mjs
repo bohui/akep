@@ -9,6 +9,31 @@ const route = process.env.AKEP_PATH || "/akep/events";
 const maxBytes = process.env.AKEP_MAX_BYTES || "1mb";
 const toleranceSeconds = Number(process.env.AKEP_TIMESTAMP_TOLERANCE || "300");
 const inboxPath = process.env.AKEP_INBOX_JSONL || ".akep/inbox.jsonl";
+// When set, replay/wait/ack/tasks endpoints require
+// `Authorization: Bearer <AKEP_REPLAY_BEARER>`.
+const replayBearer = process.env.AKEP_REPLAY_BEARER || "";
+
+function timingSafeEqualStr(a, b) {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ab.length === bb.length && crypto.timingSafeEqual(ab, bb);
+}
+
+function requireBearer(req, res) {
+  if (!replayBearer) return true;
+  const auth = String(req.headers["authorization"] || "");
+  if (!auth.toLowerCase().startsWith("bearer ")) {
+    res.set?.("www-authenticate", 'Bearer realm="akep"');
+    res.status(401).json({ error: "bearer token required" });
+    return false;
+  }
+  const provided = auth.slice("bearer ".length).trim();
+  if (!timingSafeEqualStr(provided, replayBearer)) {
+    res.status(403).json({ error: "invalid bearer token" });
+    return false;
+  }
+  return true;
+}
 
 function secretBytes() {
   const secret = process.env.AKEP_WEBHOOK_SECRET;
@@ -94,10 +119,17 @@ function matchesSubscription(event, subscription, headers) {
     return [false, `source.producer_id '${producerId}' not in accepted_producer_ids`];
   }
 
-  // 3. signature_key_ids
+  // 3. signature_key_ids — fail closed: when the subscription declares
+  // accepted key ids, the request MUST include webhook-signature-key-id
+  // AND it MUST be in the list. A missing header is a rejection.
   const keyId = headers["webhook-signature-key-id"];
-  if (security.signature_key_ids && keyId && !security.signature_key_ids.includes(keyId)) {
-    return [false, `webhook-signature-key-id '${keyId}' not in signature_key_ids`];
+  if (security.signature_key_ids) {
+    if (!keyId) {
+      return [false, "webhook-signature-key-id header is required by subscription"];
+    }
+    if (!security.signature_key_ids.includes(keyId)) {
+      return [false, `webhook-signature-key-id '${keyId}' not in signature_key_ids`];
+    }
   }
 
   return [true, ""];
@@ -143,14 +175,18 @@ app.post(route, (req, res) => {
 
   const subPath = process.env.AKEP_SUBSCRIPTION_PATH || "examples/events/subscription.json";
   if (fs.existsSync(subPath)) {
+    // Fail CLOSED: if the subscription file is configured but unreadable
+    // or malformed, reject the event rather than accept it.
+    let subscription;
     try {
-      const subscription = JSON.parse(fs.readFileSync(subPath, "utf8"));
-      const [okSub, reasonSub] = matchesSubscription(event, subscription, req.headers);
-      if (!okSub) {
-        return res.status(422).json({ error: `subscription mismatch: ${reasonSub}` });
-      }
+      subscription = JSON.parse(fs.readFileSync(subPath, "utf8"));
     } catch (err) {
-      console.error("Error loading or matching subscription:", err);
+      console.error("Subscription file unreadable, failing closed:", err);
+      return res.status(503).json({ error: "subscription configuration unavailable" });
+    }
+    const [okSub, reasonSub] = matchesSubscription(event, subscription, req.headers);
+    if (!okSub) {
+      return res.status(422).json({ error: `subscription mismatch: ${reasonSub}` });
     }
   }
 

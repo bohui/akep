@@ -2,23 +2,85 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AKEP v1 HTTP API",
-    "version": "0.2.0",
-    "description": "Reference HTTP surface for AKEP event ingestion, inbox replay, acknowledgement, waiting, and task-state lookup."
+    "version": "0.2.1",
+    "description": "Reference HTTP surface for AKEP event ingestion, inbox replay, acknowledgement, waiting, and task-state lookup. Read endpoints (replay, wait, ack, tasks) MUST be authenticated in non-local deployments — see docs/auth.md."
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Opaque token configured per subscription. Required on replay, wait, ack, and tasks endpoints when AKEP_REPLAY_BEARER is set."
+      }
+    },
+    "schemas": {
+      "AkepEvent": {
+        "$ref": "https://akep.dev/schemas/akep-event-v1.schema.json"
+      },
+      "AkepSubscription": {
+        "$ref": "https://akep.dev/schemas/akep-subscription-v1.schema.json"
+      },
+      "ReplayPage": {
+        "type": "object",
+        "required": ["events", "next_cursor", "has_more"],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/AkepEvent" }
+          },
+          "next_cursor": { "type": "string" },
+          "has_more": { "type": "boolean" }
+        }
+      },
+      "AckRequest": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["stored", "applied", "rejected"] },
+          "reason": { "type": "string" },
+          "processed_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": { "error": { "type": "string" } }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Authentication is required but the request did not provide a valid bearer token.",
+        "headers": {
+          "WWW-Authenticate": {
+            "schema": { "type": "string" },
+            "description": "Bearer realm=\"akep\""
+          }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Forbidden": {
+        "description": "Bearer token did not match the configured value.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "BadRequest": {
+        "description": "Invalid signature, envelope, cursor, or query parameter.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      }
+    }
   },
   "paths": {
     "/.well-known/akep.json": {
       "get": {
         "summary": "Discover AKEP service capabilities",
+        "description": "Unauthenticated bootstrap document. Lists profiles, signature algorithms, auth schemes, and endpoints.",
         "responses": {
-          "200": {
-            "description": "AKEP discovery document"
-          }
+          "200": { "description": "AKEP discovery document" }
         }
       }
     },
     "/akep/events": {
       "post": {
         "summary": "Ingest a signed AKEP event",
+        "description": "Authenticated by Standard Webhooks HMAC over the raw body. See docs/signatures.md.",
         "parameters": [
           { "name": "webhook-id", "in": "header", "required": true, "schema": { "type": "string" } },
           { "name": "webhook-timestamp", "in": "header", "required": true, "schema": { "type": "string" } },
@@ -29,18 +91,34 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "../schemas/akep-event-v1.schema.json" }
+              "schema": { "$ref": "#/components/schemas/AkepEvent" }
             }
           }
         },
         "responses": {
           "202": { "description": "Event accepted after verification and durable persistence" },
-          "400": { "description": "Invalid signature or envelope" },
-          "413": { "description": "Payload too large" }
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": {
+            "description": "Duplicate event_id; receiver MAY return 202 with duplicate=true instead.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "413": {
+            "description": "Payload too large.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "422": {
+            "description": "Event did not match any known subscription (event_type, filters, accepted_source_names, accepted_producer_ids, or signature_key_ids).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "503": {
+            "description": "Subscription configuration could not be loaded — receiver fails closed.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
         }
       },
       "get": {
         "summary": "Replay inbox events from an opaque cursor",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string" } },
           { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 1000 } }
@@ -49,71 +127,76 @@
           "200": {
             "description": "Replay page",
             "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": ["events", "next_cursor", "has_more"],
-                  "properties": {
-                    "events": { "type": "array", "items": { "$ref": "../schemas/akep-event-v1.schema.json" } },
-                    "next_cursor": { "type": "string" },
-                    "has_more": { "type": "boolean" }
-                  }
-                }
-              }
+              "application/json": { "schema": { "$ref": "#/components/schemas/ReplayPage" } }
             }
-          }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
         }
       }
     },
     "/akep/events/wait": {
       "get": {
         "summary": "Long-poll for the next replay event",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string" } },
           { "name": "timeout_seconds", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 60 } }
         ],
         "responses": {
-          "200": { "description": "At least one event is available" },
-          "204": { "description": "No event became available before timeout" }
+          "200": {
+            "description": "At least one event is available",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ReplayPage" } }
+            }
+          },
+          "204": { "description": "No event became available before timeout" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
         }
       }
     },
     "/akep/events/{event_id}/ack": {
       "post": {
         "summary": "Acknowledge local persistence or application of an event",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "event_id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
         "requestBody": {
           "required": false,
           "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "status": { "type": "string", "enum": ["stored", "applied", "rejected"] },
-                  "reason": { "type": "string" },
-                  "processed_at": { "type": "string", "format": "date-time" }
-                }
-              }
-            }
+            "application/json": { "schema": { "$ref": "#/components/schemas/AckRequest" } }
           }
         },
         "responses": {
           "200": { "description": "Ack stored idempotently" },
-          "404": { "description": "Unknown event" }
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": {
+            "description": "Unknown event",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
         }
       }
     },
     "/akep/tasks/{task_id}": {
       "get": {
         "summary": "Retrieve task state as reconstructed from inbox events",
+        "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "task_id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
         "responses": {
           "200": { "description": "Task state" },
-          "404": { "description": "Unknown task" }
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": {
+            "description": "Unknown task",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
         }
       }
     }

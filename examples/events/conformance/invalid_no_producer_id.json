@@ -1,0 +1,21 @@
+{
+  "spec": "akep.v1",
+  "event_id": "evt_invalid_no_producer_id",
+  "event_type": "knowledge.acquired",
+  "occurred_at": "2026-05-19T06:30:00Z",
+  "source": {
+    "name": "test-runner",
+    "type": "system"
+  },
+  "subject": {
+    "task_id": "task_conformance_02"
+  },
+  "knowledge": {
+    "kind": "observation",
+    "content_type": "application/json",
+    "summary": "This should fail because source.producer_id is missing."
+  },
+  "routing": {
+    "resume_policy": "append_only"
+  }
+}

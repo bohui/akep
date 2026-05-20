@@ -74,6 +74,29 @@ Ack is idempotent. Repeating the same ack MUST return success.
 Ack does not mean the event executed a command. It only reports receiver
 disposition after local policy handled the knowledge.
 
+## Causality and Ordering
+
+Two optional `routing` fields help receivers detect out-of-order or
+gap-prone delivery without changing the wire envelope:
+
+| Field                  | Meaning                                                                      |
+| ---------------------- | ---------------------------------------------------------------------------- |
+| `routing.causation_id` | The `event_id` of the event that caused this event, when the producer knows. |
+| `routing.sequence`     | A monotonic, per-`subject` counter the producer maintains.                   |
+
+Receivers MAY use them as follows:
+
+- If `routing.sequence` for a given `subject.task_id` (or `thread_id`)
+  goes backwards or skips, the receiver SHOULD treat the subject as
+  out-of-order and trigger a cursor replay for that subject before
+  applying further events.
+- `routing.causation_id` is for audit and trace correlation. Receivers
+  SHOULD NOT block on it (the producer may legitimately omit it), but
+  SHOULD persist it alongside the event for debugging.
+
+These fields are advisory. Receivers without ordering needs can ignore
+them. Producers that cannot emit them MAY leave them off.
+
 ## Task State Lookup
 
 ```http

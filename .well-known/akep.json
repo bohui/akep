@@ -9,8 +9,9 @@
     "ack": "/akep/events/{event_id}/ack",
     "tasks": "/akep/tasks/{task_id}"
   },
-  "delivery_profiles": ["webhook", "replay_inbox", "relay"],
+  "delivery_profiles": ["webhook", "replay_inbox", "task_state"],
   "signature_algorithms": ["v1"],
+  "auth_schemes": ["bearer"],
   "event_schema": "https://akep.dev/schemas/akep-event-v1.schema.json",
   "subscription_schema": "https://akep.dev/schemas/akep-subscription-v1.schema.json",
   "retention": {

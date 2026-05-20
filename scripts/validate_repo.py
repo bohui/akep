@@ -106,6 +106,7 @@ def validate_schemas() -> None:
             ROOT / "examples/events/conformance/invalid_no_subject.json",
             ROOT / "examples/events/conformance/invalid_empty_subject.json",
             ROOT / "examples/events/conformance/invalid_command.json",
+            ROOT / "examples/events/conformance/invalid_no_producer_id.json",
         ]
         for path in invalid_events:
             ok, _ = validate_event_minimal(load_json(path))
@@ -141,7 +142,8 @@ def validate_schemas() -> None:
     invalid_events = [
         (ROOT / "examples/events/conformance/invalid_no_subject.json", "missing subject"),
         (ROOT / "examples/events/conformance/invalid_empty_subject.json", "empty subject"),
-        (ROOT / "examples/events/conformance/invalid_command.json", "command key present")
+        (ROOT / "examples/events/conformance/invalid_command.json", "command key present"),
+        (ROOT / "examples/events/conformance/invalid_no_producer_id.json", "missing source.producer_id")
     ]
     for path, description in invalid_events:
         event = load_json(path)
